@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Temp uploaded files
+temp/
+backend/temp/
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# API keys — never push
+.env
+.env.local
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
