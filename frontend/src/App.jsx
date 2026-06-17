@@ -1,7 +1,7 @@
 import { useState } from "react"
 import axios from "axios"
 
-const API = "http://localhost:8000"
+const API = "https://talentmatch-pro production.up.railway.app"
 
 const RECOMMENDATION_COLORS = {
   "Strong Yes" : "bg-green-700 text-white",
