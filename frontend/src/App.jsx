@@ -1,8 +1,7 @@
 import { useState } from "react"
 import axios from "axios"
 
-const API = import.meta.env.VITE_API_URL;
-console.log("API =", API);
+const API = "https://talentmatch-pro-production.up.railway.app";
 
 const RECOMMENDATION_COLORS = {
   "Strong Yes" : "bg-green-700 text-white",
