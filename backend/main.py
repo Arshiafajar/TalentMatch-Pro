@@ -27,9 +27,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
+    "https://talent-match-pro-brown.vercel.app",   # production
+    "https://*.vercel.app",                        # ← This allows all Vercel preview URLs
     "http://localhost:5173",
-    "https://talent-match-pro-brown.vercel.app"
+    "http://localhost:3000"
  ],
     allow_credentials=True,
     allow_methods=["*"],
