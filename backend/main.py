@@ -19,19 +19,24 @@ from ranker.ranker     import rank_candidates
 from reasoning.reasoner import run_reasoning_on_candidates
 from bias.bias_audit   import run_bias_audit_smart
 
+
+
+
 app = FastAPI(
     title="TalentMatch Pro",
     description="AI-powered CV Ranking and Screening System",
     version="1.0.0"
 )
 
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    "https://talent-match-pro-brown.vercel.app",   # production
-    "https://*.vercel.app",                        # ← This allows all Vercel preview URLs
-    "http://localhost:5173",
-    "http://localhost:3000"
- ],
+    allow_origins=[
+        "https://talent-match-pro-brown.vercel.app",
+        "https://*.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
