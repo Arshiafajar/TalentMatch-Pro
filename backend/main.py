@@ -141,7 +141,7 @@ def rank(session_id: str):
 
     # Step 2 — LLM reasoning on top N
     ranked_with_reasoning = run_reasoning_on_candidates(
-        jd_text, ranked, groq_client, delay=2
+        jd_text, ranked, groq_client, delay=0.5
     )
 
     # Step 3 — Bias audit
