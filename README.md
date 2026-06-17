@@ -2,5 +2,3 @@ This repository represents the project based on my one of the freelance project.
 
 For further understanding, the initial draft of the SRS is included. If you have any questions or you want to collaborate, pleaseeee do not hesitate to reach me out!!!!!
 
-
-You can access through the following link: https://talent-match-pro-brown.vercel.app/
