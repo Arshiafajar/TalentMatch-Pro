@@ -56,7 +56,7 @@ async def run_reasoning_on_candidates_async(jd_text, ranked_candidates, client, 
         
         batch_results = await asyncio.gather(*[t[3] for t in batch])
         
-        for (filename, cv, score), reasoning in zip(batch, batch_results):
+        for (filename, cv, score,_), reasoning in zip(batch, batch_results):
             cv["reasoning"] = reasoning if reasoning else {
                 "fit_summary": "Could not generate reasoning.",
                 "strengths": [],
