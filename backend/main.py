@@ -160,7 +160,7 @@ def process_ranking_job(job_id, session_id):
                     "bias_flags"            : candidate_flags.get(filename, []),
                     "total_years_experience": cv["total_years_experience"]
                 }
-                for i, (filename, cv, score) in enumerate(ranked_with_reasoning, 1)
+                for i, (filename, cv, score, *_) in enumerate(ranked_with_reasoning, 1)
             ]
         }
 
