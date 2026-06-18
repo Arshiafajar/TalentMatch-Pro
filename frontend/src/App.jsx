@@ -1,7 +1,7 @@
 import { useState } from "react"
 import axios from "axios"
 
-const API = "https://talentmatch-pro-production.up.railway.app";
+const API = "https://talentmatch-pro-production.up.railway.app"
 
 const RECOMMENDATION_COLORS = {
   "Strong Yes" : "bg-green-700 text-white",
@@ -119,7 +119,6 @@ function exportToPDF(results) {
 
 // ─────────────────────────────────────────────
 // FOOTER COMPONENT
-// Shared between both screens
 // ─────────────────────────────────────────────
 
 function Footer() {
@@ -150,35 +149,62 @@ function UploadScreen({ onResults }) {
     setLoading(true)
 
     try {
+      // Step 1 — Create session
       setStatus("Creating session...")
       const { data: session } = await axios.post(`${API}/session/create`)
       const sid = session.session_id
 
+      // Step 2 — Upload CVs
       setStatus(`Uploading ${files.length} CVs...`)
       const formData = new FormData()
       for (const file of files) formData.append("files", file)
       await axios.post(`${API}/session/${sid}/upload-cvs`, formData)
 
+      // Step 3 — Set JD
       setStatus("Saving job description...")
       await axios.post(`${API}/session/${sid}/set-jd`, {
         jd_text : jdText,
         top_n   : 20
       })
 
-      setStatus("Ranking candidates and generating AI reasoning — please wait (~60 sec)...")
-      const { data: results } = await axios.post(
-        `${API}/session/${sid}/rank`,
-        {},
-        { timeout: 300000 }
-      )
+      // Step 4 — Start background job (returns immediately)
+      setStatus("Starting ranking pipeline...")
+      const { data: job } = await axios.post(`${API}/session/${sid}/rank`)
+      const job_id = job.job_id
 
-      onResults(results)
+      // Step 5 — Poll every 3 seconds until done
+      const poll = async () => {
+        try {
+          const { data: jobData } = await axios.get(`${API}/job/${job_id}/status`)
+
+          if (jobData.status === "complete") {
+            onResults(jobData.results)
+            setLoading(false)
+
+          } else if (jobData.status === "error") {
+            setError(`Processing error: ${jobData.error}`)
+            setLoading(false)
+
+          } else {
+            const statusMessages = {
+              "starting"  : "Initializing pipeline...",
+              "ranking"   : "Ranking candidates by semantic similarity...",
+              "reasoning" : "Generating AI reasoning for top candidates (~2 sec each)..."
+            }
+            setStatus(statusMessages[jobData.status] || "Processing...")
+            setTimeout(poll, 3000)
+          }
+        } catch (err) {
+          setError(`Polling error: ${err.message}`)
+          setLoading(false)
+        }
+      }
+
+      setTimeout(poll, 3000)
 
     } catch (err) {
       setError(`Error: ${err.response?.data?.detail || err.message}`)
-    } finally {
       setLoading(false)
-      setStatus("")
     }
   }
 
