@@ -1,7 +1,7 @@
 import { useState } from "react"
 import axios from "axios"
 
-const API = "const API = "https://talentmatch-pro-production.up.railway.app/";
+const API = "https://talentmatch-pro-production.up.railway.app/";
 
 
 const RECOMMENDATION_COLORS = {
