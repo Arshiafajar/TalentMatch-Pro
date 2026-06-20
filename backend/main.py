@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -9,15 +9,17 @@ import uvicorn
 import uuid
 import shutil
 import os
-import threading
 from datetime import datetime
 from groq import Groq
 
-from parser.cv_parser   import process_single_cv
-from parser.jd_parser   import parse_jd
-from ranker.ranker      import rank_candidates
+from parser.cv_parser  import process_single_cv
+from parser.jd_parser  import parse_jd
+from ranker.ranker     import rank_candidates
 from reasoning.reasoner import run_reasoning_on_candidates
-from bias.bias_audit    import run_bias_audit_smart
+from bias.bias_audit   import run_bias_audit_smart
+
+
+
 
 app = FastAPI(
     title="TalentMatch Pro",
@@ -25,6 +27,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -38,10 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Groq client ────────────────────────────────
+
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+# ── In-memory session store ────────────────────
 sessions = {}
-jobs     = {}
 
 
 @app.get("/")
@@ -78,6 +84,7 @@ async def upload_cvs(session_id: str, files: list[UploadFile] = File(...)):
         file_path = f"{upload_dir}/{file.filename}"
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
+
         cv_data = process_single_cv(file_path)
         if cv_data:
             parsed_cvs[file.filename] = cv_data
@@ -111,94 +118,62 @@ def set_jd(session_id: str, payload: JDInput):
     }
 
 
-# ─────────────────────────────────────────────
-# BACKGROUND JOB PROCESSOR
-# Runs in a separate thread — no timeout risk
-# ─────────────────────────────────────────────
-
-def process_ranking_job(job_id, session_id):
-    try:
-        jobs[job_id] = {"status": "processing", "results": None, "error": None}
-
-        session = sessions[session_id]
-        jd_text = session["jd"]
-        all_cvs = session["cvs"]
-        top_n   = session.get("top_n", 20)
-
-        # Step 1 — Rank
-        jobs[job_id]["status"] = "ranking"
-        ranked = rank_candidates(jd_text, all_cvs, top_n=top_n)
-
-        # Step 2 — LLM reasoning
-        jobs[job_id]["status"] = "reasoning"
-        ranked_with_reasoning = run_reasoning_on_candidates(
-            jd_text, ranked, groq_client, delay=2
-        )
-
-        # Step 3 — Bias audit
-        session_flags, candidate_flags = run_bias_audit_smart(ranked_with_reasoning)
-
-        # Step 4 — Build results
-        results = {
-            "session_id"    : session_id,
-            "jd_parsed"     : parse_jd(jd_text),
-            "total_screened": len(all_cvs),
-            "top_n"         : top_n,
-            "generated_at"  : datetime.now().isoformat(),
-            "session_flags" : session_flags,
-            "candidates"    : [
-                {
-                    "rank"                  : rank,
-                    "filename"              : filename,
-                    "name"                  : cv["name"],
-                    "email"                 : cv["email"],
-                    "match_score"           : score,
-                    "recommendation"        : cv["reasoning"]["recommendation"],
-                    "fit_summary"           : cv["reasoning"]["fit_summary"],
-                    "strengths"             : cv["reasoning"]["strengths"],
-                    "gaps"                  : cv["reasoning"]["gaps"],
-                    "bias_flags"            : candidate_flags.get(filename, []),
-                    "total_years_experience": cv["total_years_experience"]
-                }
-                for i, (filename, cv, score, *_) in enumerate(ranked_with_reasoning, 1)
-            ]
-        }
-
-        sessions[session_id]["results"] = results
-        jobs[job_id] = {"status": "complete", "results": results, "error": None}
-
-    except Exception as e:
-        jobs[job_id] = {"status": "error", "results": None, "error": str(e)}
-
-
 @app.post("/session/{session_id}/rank")
 def rank(session_id: str):
     if session_id not in sessions:
         return {"error": "Session not found"}
-    if not sessions[session_id].get("jd"):
+
+    session = sessions[session_id]
+
+    if not session.get("jd"):
         return {"error": "No JD set — call /set-jd first"}
-    if not sessions[session_id].get("cvs"):
+
+    if not session.get("cvs"):
         return {"error": "No CVs uploaded — call /upload-cvs first"}
 
-    job_id = str(uuid.uuid4())
-    jobs[job_id] = {"status": "starting", "results": None, "error": None}
+    jd_text = session["jd"]
+    all_cvs = session["cvs"]
+    top_n   = session.get("top_n", 20)
 
-    thread = threading.Thread(
-        target=process_ranking_job,
-        args=(job_id, session_id)
+    # Step 1 — Rank by semantic similarity
+    ranked = rank_candidates(jd_text, all_cvs, top_n=top_n)
+
+    # Step 2 — LLM reasoning on top N
+    ranked_with_reasoning = run_reasoning_on_candidates(
+        jd_text, ranked, groq_client, delay=2
     )
-    thread.daemon = True
-    thread.start()
 
-    # Returns immediately — frontend polls for status
-    return {"job_id": job_id, "status": "started"}
+    # Step 3 — Bias audit
+    session_flags, candidate_flags = run_bias_audit_smart(ranked_with_reasoning)
 
+    # Step 4 — Build results
+    results = {
+        "session_id"    : session_id,
+        "jd_parsed"     : parse_jd(jd_text),
+        "total_screened": len(all_cvs),
+        "top_n"         : top_n,
+        "generated_at"  : datetime.now().isoformat(),
+        "session_flags" : session_flags,
+        "candidates"    : [
+            {
+                "rank"          : rank,
+                "filename"      : filename,
+                "name"          : cv["name"],
+                "email"         : cv["email"],
+                "match_score"   : score,
+                "recommendation": cv["reasoning"]["recommendation"],
+                "fit_summary"   : cv["reasoning"]["fit_summary"],
+                "strengths"     : cv["reasoning"]["strengths"],
+                "gaps"          : cv["reasoning"]["gaps"],
+                "bias_flags"    : candidate_flags.get(filename, []),
+                "total_years_experience": cv["total_years_experience"]
+            }
+            for rank, (filename, cv, score) in enumerate(ranked_with_reasoning, 1)
+        ]
+    }
 
-@app.get("/job/{job_id}/status")
-def job_status(job_id: str):
-    if job_id not in jobs:
-        return {"error": "Job not found"}
-    return jobs[job_id]
+    sessions[session_id]["results"] = results
+    return results
 
 
 @app.get("/session/{session_id}/results")
@@ -212,5 +187,4 @@ def get_results(session_id: str):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
